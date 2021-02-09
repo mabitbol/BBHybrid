@@ -1,0 +1,7 @@
+*.pyc
+*.out
+*.swp
+.bashrc
+__pycache__/
+data/
+python3.sh
