@@ -55,11 +55,10 @@ for b,(l0,lf) in enumerate(zip(lbands[:-1],lbands[1:])):
 s_wins = sacc.BandpowerWindow(larr_all, windows.T)
 
 # Precompute coupling matrix for namaster
-if masked: 
-    b = nmt.NmtBin.from_nside_linear(nside, dell, is_Dell=True)
-    empty_field = nmt.NmtField(sat_mask, maps=None, spin=2, purify_e=False, purify_b=True)
-    w_yp = nmt.NmtWorkspace()
-    w_yp.compute_coupling_matrix(empty_field, empty_field, b)
+b = nmt.NmtBin.from_nside_linear(nside, dell, is_Dell=True)
+empty_field = nmt.NmtField(sat_mask, maps=None, spin=2, purify_e=False, purify_b=True)
+w_yp = nmt.NmtWorkspace()
+w_yp.compute_coupling_matrix(empty_field, empty_field, b)
 
 # Beams
 beams = {band_names[i]: b for i, b in enumerate(nc.Simons_Observatory_V3_SA_beams(larr_all))}
@@ -84,23 +83,14 @@ for kn in range(nsims):
     bpw_freq_sig = np.zeros((nfreqs, npol, nfreqs, npol, nbands))
     for i in range(nfreqs):
         for j in range(nfreqs):
-            if masked:
-                f2_1 = nmt.NmtField(sat_mask, y[i], purify_e=False, purify_b=True)
-                f2_2 = nmt.NmtField(sat_mask, y[j], purify_e=False, purify_b=True)
-                cl_coupled = nmt.compute_coupled_cell(f2_1, f2_2)
-                cl_decoupled = w_yp.decouple_cell(cl_coupled)
-                bpw_freq_sig[i, 0, j, 0] = cl_decoupled[0]
-                bpw_freq_sig[i, 0, j, 1] = cl_decoupled[1]
-                bpw_freq_sig[i, 1, j, 0] = cl_decoupled[2]
-                bpw_freq_sig[i, 1, j, 1] = cl_decoupled[3]
-            else: 
-                # dont use this rn
-                psz = hp.anafast(z[i], z[j], lmax=lmax)
-                binnedps = np.einsum('ij, kj', psz, windows)
-                bpw_freq_sig[i, 0, j, 0] = binnedps[1]
-                bpw_freq_sig[i, 0, j, 1] = binnedps[4]
-                bpw_freq_sig[i, 1, j, 0] = binnedps[4]
-                bpw_freq_sig[i, 1, j, 1] = binnedps[2]
+            f2_1 = nmt.NmtField(sat_mask, y[i], purify_e=False, purify_b=True)
+            f2_2 = nmt.NmtField(sat_mask, y[j], purify_e=False, purify_b=True)
+            cl_coupled = nmt.compute_coupled_cell(f2_1, f2_2)
+            cl_decoupled = w_yp.decouple_cell(cl_coupled)
+            bpw_freq_sig[i, 0, j, 0] = cl_decoupled[0]
+            bpw_freq_sig[i, 0, j, 1] = cl_decoupled[1]
+            bpw_freq_sig[i, 1, j, 0] = cl_decoupled[2]
+            bpw_freq_sig[i, 1, j, 1] = cl_decoupled[3]
 
     # Add to signal
     bpw_freq_tot = bpw_freq_sig+bpw_freq_noi
