@@ -2,28 +2,31 @@ import numpy as np
 from utils import *
 import noise_calc as nc
 import sacc
-import sys
 import healpy as hp
 import pymaster as nmt
+import glob
 
 sk = 0
-residuals = True
+residuals = False
 masked = True
-nsims = 21
+nsims = 1
 
 nside = 256
 npix = hp.nside2npix(nside)
 
 fdir = f'/mnt/zfsusers/mabitbol/simdata/sims_gauss_fullsky_ns256_csd_std0.{sk}_gm3/'
 prefix_out = f'data/sim0{sk}/'
+
 if residuals:
     sname = 'resid'
-    fnames = glob.glob(f'{prefix_out}residualmaps*.fits')
-    fnames.sort()
+    if masked:
+        fnames = glob.glob(f'{prefix_out}masked_residualmaps*.fits')
+    else: 
+        fnames = glob.glob(f'{prefix_out}residualmaps*.fits')
 else:
     sname = 'baseline'
     fnames = glob.glob(f'{fdir}s*/maps_sky_signal.fits')
-    fnames.sort()
+fnames.sort()
 
 if masked:
     sname += '_masked'
@@ -33,10 +36,10 @@ else:
 
 nfreqs = 6
 npol = 2
-sens=2
-knee=1
-ylf=1
-fsky=0.1
+sens = 2
+knee = 1
+ylf = 1
+fsky = 0.1
 
 # Bandpasses
 bpss = {n: Bpass(n,f'data/bandpasses/{n}.txt') for n in band_names}
@@ -46,10 +49,10 @@ dell = 10
 nbands = 76
 lmax = 2+nbands*dell
 larr_all = np.arange(lmax+1)
-lbands = np.linspace(2,lmax,nbands+1,dtype=int)
+lbands = np.linspace(2, lmax, nbands+1, dtype=int)
 leff = 0.5*(lbands[1:]+lbands[:-1])
-windows = np.zeros([nbands,lmax+1])
-for b,(l0,lf) in enumerate(zip(lbands[:-1],lbands[1:])):
+windows = np.zeros([nbands, lmax+1])
+for b,(l0,lf) in enumerate(zip(lbands[:-1], lbands[1:])):
     windows[b,l0:lf] = (larr_all * (larr_all + 1)/(2*np.pi))[l0:lf]
     windows[b,:] /= dell
 s_wins = sacc.BandpowerWindow(larr_all, windows.T)
@@ -64,14 +67,14 @@ w_yp.compute_coupling_matrix(empty_field, empty_field, b)
 beams = {band_names[i]: b for i, b in enumerate(nc.Simons_Observatory_V3_SA_beams(larr_all))}
 
 # N_ell
-nell=np.zeros([nfreqs,lmax+1])
-_,nell[:,2:],_=nc.Simons_Observatory_V3_SA_noise(sens,knee,ylf,fsky,lmax+1,1)
-n_bpw=np.sum(nell[:,None,:]*windows[None,:,:],axis=2)
-bpw_freq_noi=np.zeros((nfreqs, npol, nfreqs, npol, nbands))
+nell=np.zeros([nfreqs, lmax+1])
+_, nell[:,2:], _ = nc.Simons_Observatory_V3_SA_noise(sens, knee, ylf, fsky, lmax+1, 1)
+n_bpw = np.sum(nell[:, None, :]*windows[None, :, :], axis=2)
+bpw_freq_noi = np.zeros((nfreqs, npol, nfreqs, npol, nbands))
 for ib,n in enumerate(n_bpw):
-    bpw_freq_noi[ib,0,ib,0,:]=n_bpw[ib,:]
-    bpw_freq_noi[ib,1,ib,1,:]=n_bpw[ib,:]
-bpw_freq_noi_re = bpw_freq_noi_re.reshape([nfreqs*2,nfreqs*2,nbands])
+    bpw_freq_noi[ib, 0, ib, 0, :] = n_bpw[ib, :]
+    bpw_freq_noi[ib, 1, ib, 1, :] = n_bpw[ib, :]
+bpw_freq_noi_re = bpw_freq_noi.reshape([nfreqs*2, nfreqs*2, nbands])
 
 for kn in range(nsims):
     x = hp.read_map(fnames[kn], field=np.arange(nfreqs*npol), verbose=False)
@@ -94,8 +97,8 @@ for kn in range(nsims):
 
     # Add to signal
     bpw_freq_tot = bpw_freq_sig+bpw_freq_noi
-    bpw_freq_tot = bpw_freq_tot.reshape([nfreqs*2,nfreqs*2,nbands])
-    bpw_freq_sig = bpw_freq_sig.reshape([nfreqs*2,nfreqs*2,nbands])
+    bpw_freq_tot = bpw_freq_tot.reshape([nfreqs*2, nfreqs*2, nbands])
+    bpw_freq_sig = bpw_freq_sig.reshape([nfreqs*2, nfreqs*2, nbands])
 
     # Creating Sacc files
     s_d = sacc.Sacc()
@@ -119,10 +122,10 @@ for kn in range(nsims):
                          map_unit='uK_CMB')
 
     # Adding power spectra
-    nmaps=2*nfreqs
-    ncross=(nmaps*(nmaps+1))//2
-    indices_tr=np.triu_indices(nmaps)
-    map_names=[]
+    nmaps = 2*nfreqs
+    ncross = (nmaps*(nmaps+1))//2
+    indices_tr = np.triu_indices(nmaps)
+    map_names = []
     for ib, n in enumerate(band_names):
         map_names.append('band%d' % (ib+1) + '_E')
         map_names.append('band%d' % (ib+1) + '_B')
