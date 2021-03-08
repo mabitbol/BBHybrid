@@ -7,8 +7,8 @@ import pymaster as nmt
 import glob
 
 for sk in range(4):
-    residuals = False
-    masked = True
+    residuals = True
+    masked = False
     nsims = 21
 
     nside = 256
@@ -83,10 +83,8 @@ for sk in range(4):
 
     for kn in range(nsims):
         x = hp.read_map(fnames[kn], field=np.arange(nfreqs*npol), verbose=False)
-        x[:, sat_mask==0] = 0
+        x[:, sat_mask==0] = 0.
         y = x.reshape((nfreqs, npol, -1))
-        T = np.ones((nfreqs, 1, x.shape[-1]))
-        z = np.hstack((T, y))
 
         bpw_freq_sig = np.zeros((nfreqs, npol, nfreqs, npol, nbands))
         for i in range(nfreqs):
