@@ -9,7 +9,7 @@ import bfore.skymodel as sky
 import bfore.instrumentmodel as ins
 from bfore.sampling import clean_pixels, run_emcee, run_minimize, run_fisher
 
-std = 0
+std = 3
 nside = 256
 fdir = '/mnt/zfsusers/mabitbol/simdata/'
 ddir = f'sims_gauss_fullsky_ns256_csd_std0.{std}_gm3/'
@@ -19,14 +19,13 @@ fnames = glob.glob(fdir+ddir+'s*/')
 fnames.sort()
 
 sat_mask = hp.ud_grade(hp.read_map('/mnt/extraspace/damonge/SO/BBPipe/mask_apodized.fits'), nside)
+npix = np.sum(sat_mask>0)
 
 def clean_maps(k, fn):
     testmap = hp.read_map(f'{fn}maps_sky_signal.fits', field=np.arange(12), verbose=False)
-    testmap[:, sat_mask==0] = 0
-    Qs = testmap[::2]
-    Us = testmap[1::2]
+    Qs = testmap[::2, sat_mask>0]
+    Us = testmap[1::2, sat_mask>0]
     skymaps = np.array([np.transpose(Qs), np.transpose(Us)])
-    print("Read maps")
 
     nu_ref_sync_p=23.
     beta_sync_fid=-3.
@@ -36,10 +35,10 @@ def clean_maps(k, fn):
     beta_dust_fid=1.5
     temp_dust_fid=19.6
 
-    spec_i=np.zeros([2, hp.nside2npix(nside)]);
-    spec_o=np.zeros([2, hp.nside2npix(nside)]);
-    amps_o=np.zeros([3, 2, hp.nside2npix(nside)]);
-    cova_o=np.zeros([6, 2, hp.nside2npix(nside)]);
+    spec_i=np.zeros([2, npix]);
+    spec_o=np.zeros([2, npix]);
+    amps_o=np.zeros([3, 2, npix]);
+    cova_o=np.zeros([6, 2, npix]);
 
     bs=beta_sync_fid; bd=beta_dust_fid; td=temp_dust_fid; cs=curv_sync_fid;
     sbs=3.0; sbd=3.0; 
@@ -69,22 +68,22 @@ def clean_maps(k, fn):
         "callback" : None,
         "options" : {'xtol':1E-4,'ftol':1E-4,'maxiter':None,'maxfev':None,'direc':None}
         }
-    print("Minimizing")
     rdict = clean_pixels(ml, run_minimize, **sampler_args)
-    print(rdict['params_ML'])
 
     Sbar = ml.f_matrix(rdict['params_ML']).T
     Sninv = np.linalg.inv(np.dot(Sbar.T, Sbar))
     P = np.diag([1., 1., 0.])
     Q = np.identity(6) - Sbar.dot(P).dot(Sninv).dot(Sbar.T)
-    reducedmaps = np.einsum('ab, cdb', Q, skymaps)
-
-    print("Saving")
+    reducedmaps = np.einsum('ab, cdb', Q, skymaps).reshape((12, -1))
+    
+    filled_maps = np.zeros((12, hp.nside2npix(nside))) 
+    filled_maps[:, sat_mask>0] = reducedmaps
+    
     np.savez(f'{sdir}masked_hybrid_params{k}', params=rdict['params_ML'], Sbar=Sbar, Q=Q)
-    hp.write_map(f'{sdir}masked_residualmaps{k}.fits', reducedmaps.reshape((12, hp.nside2npix(nside))), overwrite=True)
+    hp.write_map(f'{sdir}masked_residualmaps{k}.fits', filled_maps, overwrite=True)
     return
 
 
-for k, fn in enumerate(fnames):
+for k, fn in enumerate(fnames[:21]):
     clean_maps(k, fn)
 

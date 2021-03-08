@@ -4,20 +4,11 @@ import noise_calc as nc
 import sacc
 import sys
 import healpy as hp
-import glob
 
-try: 
-    sk = str(sys.argv[1])
-except:
-    print("Need STD value")
-    sys.exit(1)
 
+sk = 0
 nsims = 21
-prefix_out = 'data/sim0'+sk+'/'
-fdir = '/mnt/zfsusers/mabitbol/simdata/sims_gauss_fullsky_ns256_csd_std0.'+sk+'_gm3/'
-fnames = glob.glob(fdir+'s*/maps_sky_signal.fits')
-fnames.sort()
-
+prefix_out = f'data/sim0{sk}/'
 nfreqs = 6
 npol = 2
 
@@ -57,7 +48,7 @@ for kn in range(nsims):
         bpw_freq_noi[ib,0,ib,0,:]=n_bpw[ib,:]
         bpw_freq_noi[ib,1,ib,1,:]=n_bpw[ib,:]
 
-    x = hp.read_map(fnames[kn], field=np.arange(nfreqs*npol), verbose=False)
+    x = hp.read_map(prefix_out+'residualmaps'+str(kn)+'.fits', field=np.arange(nfreqs*npol), verbose=False)
     y = x.reshape((nfreqs, npol, -1))
     T = np.ones((nfreqs, 1, x.shape[-1]))
     z = np.hstack((T, y))
@@ -65,8 +56,10 @@ for kn in range(nsims):
     bpw_freq_sig = np.zeros((nfreqs, npol, nfreqs, npol, nbands))
     for i in range(nfreqs):
         for j in range(i,nfreqs):
+
             psz = hp.anafast(z[i], z[j], lmax=lmax)
             binnedps = np.einsum('ij, kj', psz, windows)
+
             bpw_freq_sig[i, 0, j, 0] = binnedps[1]
             bpw_freq_sig[i, 1, j, 1] = binnedps[2]
             bpw_freq_sig[j, 0, i, 0] = binnedps[1]
@@ -130,7 +123,9 @@ for kn in range(nsims):
 
     # Write output
     print("Writing "+str(kn))
-    s_d.save_fits(prefix_out + "cls_coadd_base"+str(kn)+".fits", overwrite=True)
-    s_f.save_fits(prefix_out + "cls_fid_base"+str(kn)+".fits", overwrite=True)
-    s_n.save_fits(prefix_out + "cls_noise_base"+str(kn)+".fits", overwrite=True)
+    s_d.save_fits(prefix_out + "cls_coadd"+str(kn)+".fits", overwrite=True)
+    s_f.save_fits(prefix_out + "cls_fid"+str(kn)+".fits", overwrite=True)
+    s_n.save_fits(prefix_out + "cls_noise"+str(kn)+".fits", overwrite=True)
+
+
 

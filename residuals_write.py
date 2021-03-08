@@ -5,16 +5,27 @@ import sacc
 import sys
 import healpy as hp
 
-try: 
-    sk = str(sys.argv[1])
-except:
-    print("Need STD value")
-    sys.exit(1)
-
+sk = 0
+residuals = True
 nsims = 21
-prefix_out = 'data/sim0'+sk+'/'
+
+fdir = f'/mnt/zfsusers/mabitbol/simdata/sims_gauss_fullsky_ns256_csd_std0.{sk}_gm3/'
+prefix_out = f'data/sim0{sk}/'
+if residuals:
+    sname = 'resid_masked'
+    fnames = glob.glob(f'{prefix_out}residualmaps*.fits')
+    fnames.sort()
+else:
+    sname = 'baseline_masked'
+    fnames = glob.glob(f'{fdir}s*/maps_sky_signal.fits')
+    fnames.sort()
+
 nfreqs = 6
 npol = 2
+sens=2
+knee=1
+ylf=1
+fsky=0.1
 
 # Bandpasses
 bpss = {n: Bpass(n,f'data/bandpasses/{n}.txt') for n in band_names}
@@ -27,9 +38,6 @@ larr_all = np.arange(lmax+1)
 lbands = np.linspace(2,lmax,nbands+1,dtype=int)
 leff = 0.5*(lbands[1:]+lbands[:-1])
 windows = np.zeros([nbands,lmax+1])
-cl2dl=larr_all*(larr_all+1)/(2*np.pi)
-dl2cl=np.zeros_like(cl2dl)
-dl2cl[1:] = 1/(cl2dl[1:])
 for b,(l0,lf) in enumerate(zip(lbands[:-1],lbands[1:])):
     windows[b,l0:lf] = (larr_all * (larr_all + 1)/(2*np.pi))[l0:lf]
     windows[b,:] /= dell
@@ -40,10 +48,6 @@ beams = {band_names[i]: b for i, b in enumerate(nc.Simons_Observatory_V3_SA_beam
 
 for kn in range(nsims):
     # N_ell
-    sens=2
-    knee=1
-    ylf=1
-    fsky=0.1
     nell=np.zeros([nfreqs,lmax+1])
     _,nell[:,2:],_=nc.Simons_Observatory_V3_SA_noise(sens,knee,ylf,fsky,lmax+1,1)
     n_bpw=np.sum(nell[:,None,:]*windows[None,:,:],axis=2)
@@ -52,7 +56,7 @@ for kn in range(nsims):
         bpw_freq_noi[ib,0,ib,0,:]=n_bpw[ib,:]
         bpw_freq_noi[ib,1,ib,1,:]=n_bpw[ib,:]
 
-    x = hp.read_map(prefix_out+'residualmaps'+str(kn)+'.fits', field=np.arange(nfreqs*npol), verbose=False)
+    x = hp.read_map(fnames[kn], field=np.arange(nfreqs*npol), verbose=False)
     y = x.reshape((nfreqs, npol, -1))
     T = np.ones((nfreqs, 1, x.shape[-1]))
     z = np.hstack((T, y))
@@ -125,9 +129,8 @@ for kn in range(nsims):
 
     # Write output
     print("Writing "+str(kn))
-    s_d.save_fits(prefix_out + "cls_coadd"+str(kn)+".fits", overwrite=True)
-    s_f.save_fits(prefix_out + "cls_fid"+str(kn)+".fits", overwrite=True)
-    s_n.save_fits(prefix_out + "cls_noise"+str(kn)+".fits", overwrite=True)
-
+    s_d.save_fits(f'{prefix_out}cls_coadd_{sname}_{kn}.fits', overwrite=True)
+    s_f.save_fits(f'{prefix_out}cls_fid_{sname}_{kn}.fits', overwrite=True)
+    s_n.save_fits(f'{prefix_out}cls_noise_{sname}_{kn}.fits', overwrite=True)
 
 
