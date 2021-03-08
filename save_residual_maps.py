@@ -11,6 +11,7 @@ from bfore.sampling import clean_pixels, run_emcee, run_minimize, run_fisher
 
 masked = True
 std = 3
+nsims = 21
 nside = 256
 fdir = '/mnt/zfsusers/mabitbol/simdata/'
 ddir = f'sims_gauss_fullsky_ns256_csd_std0.{std}_gm3/'
@@ -21,7 +22,7 @@ fnames.sort()
 
 if masked:
     sname = 'masked'
-    sat_mask = hp.ud_grade(hp.read_map('/mnt/extraspace/damonge/SO/BBPipe/mask_apodized.fits'), nside)
+    sat_mask = hp.ud_grade(hp.read_map('mask_apodized.fits'), nside)
 else:
     sname = 'full'
     sat_mask = np.ones(hp.nside2npix(nside))
@@ -90,6 +91,6 @@ def clean_maps(k, fn):
     return
 
 
-for k, fn in enumerate(fnames[:21]):
+for k, fn in enumerate(fnames[:nsims]):
     clean_maps(k, fn)
 
