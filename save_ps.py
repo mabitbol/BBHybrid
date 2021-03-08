@@ -4,21 +4,32 @@ import noise_calc as nc
 import sacc
 import sys
 import healpy as hp
+import pymaster as nmt
 
 sk = 0
 residuals = True
+masked = True
 nsims = 21
+
+nside = 256
+npix = hp.nside2npix(nside)
 
 fdir = f'/mnt/zfsusers/mabitbol/simdata/sims_gauss_fullsky_ns256_csd_std0.{sk}_gm3/'
 prefix_out = f'data/sim0{sk}/'
 if residuals:
-    sname = 'resid_masked'
+    sname = 'resid'
     fnames = glob.glob(f'{prefix_out}residualmaps*.fits')
     fnames.sort()
 else:
-    sname = 'baseline_masked'
+    sname = 'baseline'
     fnames = glob.glob(f'{fdir}s*/maps_sky_signal.fits')
     fnames.sort()
+
+if masked:
+    sname += '_masked'
+    sat_mask = hp.ud_grade(hp.read_map('/mnt/extraspace/damonge/SO/BBPipe/mask_apodized.fits'), nside)
+else: 
+    sat_mask = np.ones(npix)
 
 nfreqs = 6
 npol = 2
@@ -43,39 +54,58 @@ for b,(l0,lf) in enumerate(zip(lbands[:-1],lbands[1:])):
     windows[b,:] /= dell
 s_wins = sacc.BandpowerWindow(larr_all, windows.T)
 
+# Precompute coupling matrix for namaster
+if masked: 
+    b = nmt.NmtBin.from_nside_linear(nside, dell, is_Dell=True)
+    empty_field = nmt.NmtField(sat_mask, maps=None, spin=2, purify_e=False, purify_b=True)
+    w_yp = nmt.NmtWorkspace()
+    w_yp.compute_coupling_matrix(empty_field, empty_field, b)
+
 # Beams
 beams = {band_names[i]: b for i, b in enumerate(nc.Simons_Observatory_V3_SA_beams(larr_all))}
 
-for kn in range(nsims):
-    # N_ell
-    nell=np.zeros([nfreqs,lmax+1])
-    _,nell[:,2:],_=nc.Simons_Observatory_V3_SA_noise(sens,knee,ylf,fsky,lmax+1,1)
-    n_bpw=np.sum(nell[:,None,:]*windows[None,:,:],axis=2)
-    bpw_freq_noi=np.zeros((nfreqs, npol, nfreqs, npol, nbands))
-    for ib,n in enumerate(n_bpw):
-        bpw_freq_noi[ib,0,ib,0,:]=n_bpw[ib,:]
-        bpw_freq_noi[ib,1,ib,1,:]=n_bpw[ib,:]
+# N_ell
+nell=np.zeros([nfreqs,lmax+1])
+_,nell[:,2:],_=nc.Simons_Observatory_V3_SA_noise(sens,knee,ylf,fsky,lmax+1,1)
+n_bpw=np.sum(nell[:,None,:]*windows[None,:,:],axis=2)
+bpw_freq_noi=np.zeros((nfreqs, npol, nfreqs, npol, nbands))
+for ib,n in enumerate(n_bpw):
+    bpw_freq_noi[ib,0,ib,0,:]=n_bpw[ib,:]
+    bpw_freq_noi[ib,1,ib,1,:]=n_bpw[ib,:]
+bpw_freq_noi_re = bpw_freq_noi_re.reshape([nfreqs*2,nfreqs*2,nbands])
 
+for kn in range(nsims):
     x = hp.read_map(fnames[kn], field=np.arange(nfreqs*npol), verbose=False)
+    x[:, sat_mask==0] = 0
     y = x.reshape((nfreqs, npol, -1))
     T = np.ones((nfreqs, 1, x.shape[-1]))
     z = np.hstack((T, y))
 
     bpw_freq_sig = np.zeros((nfreqs, npol, nfreqs, npol, nbands))
     for i in range(nfreqs):
-        for j in range(i,nfreqs):
-            psz = hp.anafast(z[i], z[j], lmax=lmax)
-            binnedps = np.einsum('ij, kj', psz, windows)
-            bpw_freq_sig[i, 0, j, 0] = binnedps[1]
-            bpw_freq_sig[i, 1, j, 1] = binnedps[2]
-            bpw_freq_sig[j, 0, i, 0] = binnedps[1]
-            bpw_freq_sig[j, 1, i, 1] = binnedps[2]
+        for j in range(nfreqs):
+            if masked:
+                f2_1 = nmt.NmtField(sat_mask, y[i], purify_e=False, purify_b=True)
+                f2_2 = nmt.NmtField(sat_mask, y[j], purify_e=False, purify_b=True)
+                cl_coupled = nmt.compute_coupled_cell(f2_1, f2_2)
+                cl_decoupled = w_yp.decouple_cell(cl_coupled)
+                bpw_freq_sig[i, 0, j, 0] = cl_decoupled[0]
+                bpw_freq_sig[i, 0, j, 1] = cl_decoupled[1]
+                bpw_freq_sig[i, 1, j, 0] = cl_decoupled[2]
+                bpw_freq_sig[i, 1, j, 1] = cl_decoupled[3]
+            else: 
+                # dont use this rn
+                psz = hp.anafast(z[i], z[j], lmax=lmax)
+                binnedps = np.einsum('ij, kj', psz, windows)
+                bpw_freq_sig[i, 0, j, 0] = binnedps[1]
+                bpw_freq_sig[i, 0, j, 1] = binnedps[4]
+                bpw_freq_sig[i, 1, j, 0] = binnedps[4]
+                bpw_freq_sig[i, 1, j, 1] = binnedps[2]
 
     # Add to signal
-    bpw_freq_tot=bpw_freq_sig+bpw_freq_noi
-    bpw_freq_tot=bpw_freq_tot.reshape([nfreqs*2,nfreqs*2,nbands])
-    bpw_freq_sig=bpw_freq_sig.reshape([nfreqs*2,nfreqs*2,nbands])
-    bpw_freq_noi=bpw_freq_noi.reshape([nfreqs*2,nfreqs*2,nbands])
+    bpw_freq_tot = bpw_freq_sig+bpw_freq_noi
+    bpw_freq_tot = bpw_freq_tot.reshape([nfreqs*2,nfreqs*2,nbands])
+    bpw_freq_sig = bpw_freq_sig.reshape([nfreqs*2,nfreqs*2,nbands])
 
     # Creating Sacc files
     s_d = sacc.Sacc()
@@ -114,7 +144,7 @@ for kn in range(nsims):
         cl_type = f'cl_{p1}{p2}'
         s_d.add_ell_cl(cl_type, n1, n2, leff, bpw_freq_sig[i1, i2, :], window=s_wins)
         s_f.add_ell_cl(cl_type, n1, n2, leff, bpw_freq_sig[i1, i2, :], window=s_wins)
-        s_n.add_ell_cl(cl_type, n1, n2, leff, bpw_freq_noi[i1, i2, :], window=s_wins)
+        s_n.add_ell_cl(cl_type, n1, n2, leff, bpw_freq_noi_re[i1, i2, :], window=s_wins)
 
     # Add covariance
     cov_bpw = np.zeros([ncross, nbands, ncross, nbands])
