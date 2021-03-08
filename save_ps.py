@@ -8,7 +8,7 @@ import glob
 
 for sk in range(4):
     residuals = False
-    masked = False
+    masked = True
     nsims = 21
 
     nside = 256
@@ -59,9 +59,14 @@ for sk in range(4):
 
     # Precompute coupling matrix for namaster
     b = nmt.NmtBin.from_nside_linear(nside, dell, is_Dell=True)
-    empty_field = nmt.NmtField(sat_mask, maps=None, spin=2, purify_e=False, purify_b=True)
-    w_yp = nmt.NmtWorkspace()
-    w_yp.compute_coupling_matrix(empty_field, empty_field, b)
+    if masked:
+        empty_field = nmt.NmtField(sat_mask, maps=None, spin=2, purify_e=False, purify_b=True)
+        w_yp = nmt.NmtWorkspace()
+        w_yp.compute_coupling_matrix(empty_field, empty_field, b)
+    else: 
+        empty_field = nmt.NmtField(sat_mask, maps=None, spin=2)
+        w_yp = nmt.NmtWorkspace()
+        w_yp.compute_coupling_matrix(empty_field, empty_field, b)
 
     # Beams
     beams = {band_names[i]: b for i, b in enumerate(nc.Simons_Observatory_V3_SA_beams(larr_all))}
@@ -86,8 +91,12 @@ for sk in range(4):
         bpw_freq_sig = np.zeros((nfreqs, npol, nfreqs, npol, nbands))
         for i in range(nfreqs):
             for j in range(nfreqs):
-                f2_1 = nmt.NmtField(sat_mask, y[i], purify_e=False, purify_b=True)
-                f2_2 = nmt.NmtField(sat_mask, y[j], purify_e=False, purify_b=True)
+                if masked:
+                    f2_1 = nmt.NmtField(sat_mask, y[i], purify_e=False, purify_b=True)
+                    f2_2 = nmt.NmtField(sat_mask, y[j], purify_e=False, purify_b=True)
+                else:
+                    f2_1 = nmt.NmtField(sat_mask, y[i])
+                    f2_2 = nmt.NmtField(sat_mask, y[j])
                 cl_coupled = nmt.compute_coupled_cell(f2_1, f2_2)
                 cl_decoupled = w_yp.decouple_cell(cl_coupled)
                 bpw_freq_sig[i, 0, j, 0] = cl_decoupled[0]
