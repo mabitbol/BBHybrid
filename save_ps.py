@@ -6,15 +6,15 @@ import healpy as hp
 import pymaster as nmt
 import glob
 
-for sk in range(4):
-    residuals = True
-    masked = False
-    nsims = 21
 
-    nside = 256
-    npix = hp.nside2npix(nside)
+residuals = False
+masked = False
+nsims = 21
 
-    fdir = f'/mnt/zfsusers/mabitbol/simdata/sims_gauss_fullsky_ns256_csd_std0.{sk}_gm3/'
+nside = 256
+npix = hp.nside2npix(nside)
+
+def saveps(sk):
     prefix_out = f'data/sim0{sk}/'
 
     if residuals:
@@ -25,6 +25,7 @@ for sk in range(4):
             fnames = glob.glob(f'{prefix_out}full_residualmaps*.fits')
     else:
         sname = 'baseline'
+        fdir = f'/mnt/zfsusers/mabitbol/simdata/sims_gauss_fullsky_ns256_csd_std0.{sk}_gm3/'
         fnames = glob.glob(f'{fdir}s*/maps_sky_signal.fits')
     fnames.sort()
 
@@ -59,14 +60,12 @@ for sk in range(4):
 
     # Precompute coupling matrix for namaster
     b = nmt.NmtBin.from_nside_linear(nside, dell, is_Dell=True)
+    purify_b = False
     if masked:
-        empty_field = nmt.NmtField(sat_mask, maps=None, spin=2, purify_e=False, purify_b=True)
-        w_yp = nmt.NmtWorkspace()
-        w_yp.compute_coupling_matrix(empty_field, empty_field, b)
-    else: 
-        empty_field = nmt.NmtField(sat_mask, maps=None, spin=2)
-        w_yp = nmt.NmtWorkspace()
-        w_yp.compute_coupling_matrix(empty_field, empty_field, b)
+        purify_b=True
+    empty_field = nmt.NmtField(sat_mask, maps=None, spin=2, purify_b=purify_b)
+    w_yp = nmt.NmtWorkspace()
+    w_yp.compute_coupling_matrix(empty_field, empty_field, b)
 
     # Beams
     beams = {band_names[i]: b for i, b in enumerate(nc.Simons_Observatory_V3_SA_beams(larr_all))}
@@ -89,12 +88,8 @@ for sk in range(4):
         bpw_freq_sig = np.zeros((nfreqs, npol, nfreqs, npol, nbands))
         for i in range(nfreqs):
             for j in range(nfreqs):
-                if masked:
-                    f2_1 = nmt.NmtField(sat_mask, y[i], purify_e=False, purify_b=True)
-                    f2_2 = nmt.NmtField(sat_mask, y[j], purify_e=False, purify_b=True)
-                else:
-                    f2_1 = nmt.NmtField(sat_mask, y[i])
-                    f2_2 = nmt.NmtField(sat_mask, y[j])
+                f2_1 = nmt.NmtField(sat_mask, y[i], purify_b=purify_b)
+                f2_2 = nmt.NmtField(sat_mask, y[j], purify_b=purify_b)
                 cl_coupled = nmt.compute_coupled_cell(f2_1, f2_2)
                 cl_decoupled = w_yp.decouple_cell(cl_coupled)
                 bpw_freq_sig[i, 0, j, 0] = cl_decoupled[0]
@@ -113,7 +108,6 @@ for sk in range(4):
         s_n = sacc.Sacc()
 
         # Adding tracers
-        print("Adding tracers")
         for ib, n in enumerate(band_names):
             bandpass = bpss[n]
             beam = beams[n]
@@ -158,9 +152,12 @@ for sk in range(4):
         s_d.add_covariance(cov_bpw)
 
         # Write output
-        print("Writing "+str(kn))
-        s_d.save_fits(f'{prefix_out}cls_coadd_{sname}_{kn}.fits', overwrite=True)
-        s_f.save_fits(f'{prefix_out}cls_fid_{sname}_{kn}.fits', overwrite=True)
-        s_n.save_fits(f'{prefix_out}cls_noise_{sname}_{kn}.fits', overwrite=True)
+        skn = str(kn).zfill(4) 
+        s_d.save_fits(f'{prefix_out}cls_coadd_{sname}_{skn}.fits', overwrite=True)
+        s_f.save_fits(f'{prefix_out}cls_fid_{sname}_{skn}.fits', overwrite=True)
+        s_n.save_fits(f'{prefix_out}cls_noise_{sname}_{skn}.fits', overwrite=True)
+    return 
 
 
+for k in range(4):
+    saveps(k)

@@ -9,16 +9,11 @@ import bfore.skymodel as sky
 import bfore.instrumentmodel as ins
 from bfore.sampling import clean_pixels, run_emcee, run_minimize, run_fisher
 
-masked = True
-std = 3
+masked = False
+
 nsims = 21
 nside = 256
 fdir = '/mnt/zfsusers/mabitbol/simdata/'
-ddir = f'sims_gauss_fullsky_ns256_csd_std0.{std}_gm3/'
-sdir = f'./data/sim0{std}/'
-
-fnames = glob.glob(f'{fdir}{ddir}s*/')
-fnames.sort()
 
 if masked:
     sname = 'masked'
@@ -28,7 +23,7 @@ else:
     sat_mask = np.ones(hp.nside2npix(nside))
 npix = np.sum(sat_mask>0)
 
-def clean_maps(k, fn):
+def clean_maps(k, fn, sdir):
     testmap = hp.read_map(f'{fn}maps_sky_signal.fits', field=np.arange(12), verbose=False)
     Qs = testmap[::2, sat_mask>0]
     Us = testmap[1::2, sat_mask>0]
@@ -86,11 +81,17 @@ def clean_maps(k, fn):
     filled_maps = np.zeros((12, hp.nside2npix(nside))) 
     filled_maps[:, sat_mask>0] = reducedmaps
     
-    np.savez(f'{sdir}{sname}_hybrid_params{k}', params=rdict['params_ML'], Sbar=Sbar, Q=Q)
-    hp.write_map(f'{sdir}{sname}_residualmaps{k}.fits', filled_maps, overwrite=True)
+    np.savez(f'{sdir}{sname}_hybrid_params_{k}', params=rdict['params_ML'], Sbar=Sbar, Q=Q)
+    hp.write_map(f'{sdir}{sname}_residualmaps_{k}.fits', filled_maps, overwrite=True)
     return
 
 
-for k, fn in enumerate(fnames[:nsims]):
-    clean_maps(k, fn)
+for std in range(4):
+    ddir = f'sims_gauss_fullsky_ns256_csd_std0.{std}_gm3/'
+    sdir = f'./data/sim0{std}/'
+
+    fnames = glob.glob(f'{fdir}{ddir}s*/')
+    fnames.sort()
+    for k, fn in enumerate(fnames[:nsims]):
+        clean_maps(str(k).zfill(4), fn, sdir)
 
